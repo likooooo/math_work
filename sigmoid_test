@@ -1,0 +1,277 @@
+#include <gtest/gtest.h>
+#include <engines/cchemicalengine.h>
+
+#define EXPORT_ARRAY_PTR(p) (p)->Export("_"#p, "RealPart", "Text")
+
+constexpr OLint width = 2048, height = 2048;
+constexpr OLreal k = 10;
+constexpr OLreal Th = 0;
+constexpr OLreal epsilon = 0.001;
+constexpr OLreal delta_K = epsilon;
+constexpr OLreal delta_Th = epsilon;  
+
+ArrayOwn<OLreal>::PTR  LoadData()
+{
+    ArrayOwn<OLreal>::PTR input = ArrayOwn<OLreal>::New(width, height);
+    input->ImportData("/home/like/Download/resist-profile", "", "Text");
+    return input;
+}
+void ErrorVerify( 
+    ArrayOwn<OLreal>::PTR arrayForward, 
+    ArrayOwn<OLreal>::PTR arrayBackward, 
+    ArrayRef<OLreal>::PTR xRandom, OLreal epsilon)
+{
+    OLreal dYdY = (*arrayForward | *arrayForward);
+    OLreal dXdZ = (*xRandom | *arrayBackward);
+    LOG(MID_INF, LTYPE_INFO, "dYdY=%f ,  dXdZ=%f,Error=%f",dYdY,dXdZ,abs((dXdZ - dYdY) / dYdY));
+    if (abs(( dXdZ - dYdY) / dYdY) < epsilon) {
+        LOG(MID_INF, LTYPE_INFO, "Relative Error is %lf, Adjoint Test Pass！ ",
+            abs((dXdZ - dYdY) / dYdY));
+    } else {
+        LOG0(MID_INF, LTYPE_ERROR, "Adjoint Test Not Pass！ ");
+    }
+} 
+
+void SigmoidDiffX( ArrayOwn<OLreal>::PTR mat1, const OLreal k, const OLreal Th)
+{
+    std::for_each(
+    mat1->Data(), mat1->Data() + mat1->LogicSize(), 
+        [k, Th](OLreal& ri){
+            const auto fx = MODEL_CHEMICALENGINE::Sigmoid(ri, k, Th);
+            ri = fx * (1 -fx) * k; 
+        }
+    );
+}
+template<class FX>
+void Derivative(ArrayOwn<OLreal>::PTR p, const FX& fx, const OLreal delta_x = 0.0001)
+{
+    {
+        ArrayOwn<OLreal>::PTR mat = ArrayOwn<OLreal>::New(*p);
+        std::for_each(
+            mat->Data(), mat->Data() + mat->LogicSize(), 
+            [fx, delta_x](OLreal& x){
+                x = static_cast<OLreal>(fx(x + delta_x) - fx(x - delta_x)) / (2 * delta_x);
+            }
+        );
+        mat->Export("sigmoid_test_Derivative");
+    }
+
+    {
+        ArrayOwn<OLreal>::PTR mat1 = ArrayOwn<OLreal>::New(*p);
+        SigmoidDiffX(mat1, k, Th);
+        mat1->Export("sigmoid_test_Derivative1");
+    }
+}
+
+auto Input = LoadData();
+TEST(SigmoidTest, Forward)
+{
+    auto sigmoid_forward_output = ArrayOwn<OLreal>::New(*Input);
+    MODEL_CHEMICALENGINE::Sigmoid(sigmoid_forward_output, k, Th);
+    EXPORT_ARRAY_PTR(sigmoid_forward_output);
+}
+
+TEST(SigmoidTest, Backward_X)
+{
+    LOG0(MID_INF, LTYPE_INFO, "begin sigmoid backward X");
+    std::shared_ptr<ArrayOwn<OLreal>> randPage = ArrayOwn<OLreal>::New(width, height);
+    randPage->Random();
+    *randPage *= epsilon;
+    // EXPORT_ARRAY_PTR(randPage);
+
+    ArrayOwn<OLreal>::PTR S1 = ArrayOwn<OLreal>::New(*Input);
+    ArrayOwn<OLreal>::PTR S2 = ArrayOwn<OLreal>::New(*Input);
+    *S1 += *randPage;
+    *S2 -= *randPage;
+    MODEL_CHEMICALENGINE::Sigmoid(S1, k, Th);
+    MODEL_CHEMICALENGINE::Sigmoid(S2, k, Th);
+    // EXPORT_ARRAY_PTR(S1);
+    // EXPORT_ARRAY_PTR(S2);
+
+    ArrayOwn<OLreal>::PTR delta_S = ArrayOwn<OLreal>::New(*S1);
+    *delta_S -= static_cast<ArrayRef<OLreal>&>(*S2);
+    *delta_S *= static_cast<OLreal>(0.5);
+    // EXPORT_ARRAY_PTR(delta_S);
+
+    ArrayOwn<OLreal>::PTR sigmoid_diffX = ArrayOwn<OLreal>::New(*Input);
+    SigmoidDiffX(sigmoid_diffX, k, Th);
+    EXPORT_ARRAY_PTR(sigmoid_diffX);
+    ArrayOwn<OLreal>::PTR backward_X_result = ArrayOwn<OLreal>::New(*delta_S);
+    *backward_X_result *= static_cast<ArrayRef<OLreal>&>(*sigmoid_diffX);
+    EXPORT_ARRAY_PTR(backward_X_result);
+    ErrorVerify(delta_S, backward_X_result, randPage, epsilon);
+}
+
+// check adjoint result
+TEST(SigmoidTest, Backward_K_Th)
+{
+    LOG0(MID_INF, LTYPE_INFO, "begin sigmoid backward K & Th");
+    /**
+     * @brief check  ∇sigmoid(x)   == sigmoid'(x)   ?
+     * a/(a + e^-u), a = 1, u = k*(RI - Th)
+     */
+    ArrayOwn<OLreal>::PTR DiffK = ArrayOwn<OLreal>::New(*Input);
+    ArrayOwn<OLreal>::PTR DiffTh = ArrayOwn<OLreal>::New(*Input);
+    {
+        ArrayOwn<OLreal>::PTR SubK = ArrayOwn<OLreal>::New(*Input);
+        std::for_each(
+            SubK->Data(), SubK->Data() + SubK->LogicSize(), 
+            [](OLreal& x){
+                x = (MODEL_CHEMICALENGINE::Sigmoid(x, k + delta_K, Th) - MODEL_CHEMICALENGINE::Sigmoid(x, k - delta_K, Th)) / (2 * delta_K);
+            }
+        );
+        EXPORT_ARRAY_PTR(SubK);
+
+        ArrayOwn<OLreal>::PTR SubTh = ArrayOwn<OLreal>::New(*Input);
+        std::for_each(
+            SubTh->Data(), SubTh->Data() + SubTh->LogicSize(), 
+            [](OLreal& x){
+                x = (MODEL_CHEMICALENGINE::Sigmoid(x, k, Th + delta_Th) - MODEL_CHEMICALENGINE::Sigmoid(x, k, Th - delta_Th)) / (2 * delta_Th);
+            }
+        );
+        EXPORT_ARRAY_PTR(SubTh);
+
+        std::for_each(
+            DiffK->Data(), DiffK->Data() + DiffK->LogicSize(), 
+            [](OLreal& x){
+                const OLreal fu = MODEL_CHEMICALENGINE::Sigmoid(x, k, Th);
+                const OLreal derivative_u = fu * (1  - fu); 
+                x = derivative_u * x;
+            }
+        );
+        EXPORT_ARRAY_PTR(DiffK);
+
+        std::for_each(
+            DiffTh->Data(), DiffTh->Data() + DiffTh->LogicSize(), 
+            [](OLreal& x){
+                const OLreal fu = MODEL_CHEMICALENGINE::Sigmoid(x, k, Th);
+                const OLreal derivative_u = fu * (1  - fu); 
+                x = - derivative_u * k;
+            }
+        );
+        EXPORT_ARRAY_PTR(DiffTh);
+    }
+    /**
+     * @brief check adjoint result
+     * 
+     */
+    ArrayOwn<OLreal>::PTR adK, adTh;
+    ArrayOwn<OLreal>::PTR delta_y_k, delta_y_Th;
+    {
+        // build input delta_S
+        ArrayOwn<OLreal>::PTR S1 = ArrayOwn<OLreal>::New(*Input);
+        ArrayOwn<OLreal>::PTR S2 = ArrayOwn<OLreal>::New(*Input);
+        MODEL_CHEMICALENGINE::Sigmoid(S1, k + delta_K, Th);
+        MODEL_CHEMICALENGINE::Sigmoid(S2, k - delta_K, Th);
+
+        delta_y_k = ArrayOwn<OLreal>::New(*S1);
+        *delta_y_k -= static_cast<ArrayRef<OLreal>&>(*S2);
+        *delta_y_k *= static_cast<OLreal>(0.5);
+        EXPORT_ARRAY_PTR(delta_y_k);
+
+        // check k
+        adK = ArrayOwn<OLreal>::New(*delta_y_k);
+        *adK *= static_cast<ArrayRef<OLreal>&>(*DiffK);
+
+        std::shared_ptr<ArrayOwn<OLreal>> randPage = ArrayOwn<OLreal>::New(width, height);
+        randPage->InitData(delta_K);
+        ErrorVerify(delta_y_k, adK, randPage, delta_K);
+    }
+    {
+        // build input delta_S
+        ArrayOwn<OLreal>::PTR S1 = ArrayOwn<OLreal>::New(*Input);
+        ArrayOwn<OLreal>::PTR S2 = ArrayOwn<OLreal>::New(*Input);
+        MODEL_CHEMICALENGINE::Sigmoid(S1, k, Th + delta_Th);
+        MODEL_CHEMICALENGINE::Sigmoid(S2, k, Th - delta_Th);
+
+        delta_y_Th = ArrayOwn<OLreal>::New(*S1);
+        *delta_y_Th -= static_cast<ArrayRef<OLreal>&>(*S2);
+        *delta_y_Th *= static_cast<OLreal>(0.5);
+        EXPORT_ARRAY_PTR(delta_y_Th);
+
+        // check Th
+        adTh = ArrayOwn<OLreal>::New(*delta_y_Th);
+        *adTh *= static_cast<ArrayRef<OLreal>&>(*DiffTh);
+        
+        std::shared_ptr<ArrayOwn<OLreal>> randPage = ArrayOwn<OLreal>::New(width, height);
+        randPage->InitData(delta_Th);
+        ErrorVerify(delta_y_Th, adTh, randPage, delta_Th);
+    }
+    ArrayOwn<OLreal>::PTR dForward = ArrayOwn<OLreal>::New(*delta_y_k);
+    *dForward += static_cast<ArrayRef<OLreal>&>(*delta_y_Th);
+
+    ArrayOwn<OLreal>::PTR sigmoid_gradient = ArrayOwn<OLreal>::New(*DiffK);
+    *sigmoid_gradient += static_cast<ArrayRef<OLreal>&>(*DiffTh);
+
+    ArrayOwn<OLreal>::PTR backward_result = ArrayOwn<OLreal>::New(*dForward);
+    *backward_result *= static_cast<ArrayRef<OLreal>&>(*sigmoid_gradient);
+    EXPORT_ARRAY_PTR(backward_result);
+    {
+        auto backward_result1 = MODEL_CHEMICALENGINE::SigmoidAD(dForward.get(), Input.get(), k, Th);
+        EXPORT_ARRAY_PTR(backward_result1);
+    }   
+}
+
+// sigmoid_ad(k, Th)
+TEST(SigmoidTest, Adjoint)
+{
+    // ArrayOwn<OLreal>::PTR SubK = ArrayOwn<OLreal>::New(*Input);
+    // std::for_each(
+    //     SubK->Data(), SubK->Data() + SubK->LogicSize(), 
+    //      [](OLreal& x){
+    //         x = (MODEL_CHEMICALENGINE::Sigmoid(x, k + delta_K, Th) - MODEL_CHEMICALENGINE::Sigmoid(x, k - delta_K, Th)) * 0.5;
+    //     }
+    // );
+    // EXPORT_ARRAY_PTR(SubK);
+
+    // ArrayOwn<OLreal>::PTR SubTh = ArrayOwn<OLreal>::New(*Input);
+    // std::for_each(
+    //     SubTh->Data(), SubTh->Data() + SubTh->LogicSize(), 
+    //      [](OLreal& x){
+    //         x = (MODEL_CHEMICALENGINE::Sigmoid(x, k, Th + delta_Th) - MODEL_CHEMICALENGINE::Sigmoid(x, k, Th - delta_Th)) * 0.5;
+    //     }
+    // );
+    // EXPORT_ARRAY_PTR(SubTh);
+
+    // ArrayOwn<OLreal>::PTR delta_y = ArrayOwn<OLreal>::New(*SubK);
+    // *delta_y += static_cast<ArrayRef<OLreal>&>(*SubTh);
+    // EXPORT_ARRAY_PTR(delta_y);
+
+    // ArrayOwn<OLreal>::PTR sigmoid_gradient = ArrayOwn<OLreal>::New(*Input);
+    // MODEL_CHEMICALENGINE::SigmoidGradient(sigmoid_gradient, k, Th);
+    // EXPORT_ARRAY_PTR(sigmoid_gradient);
+
+    // ArrayOwn<OLreal>::PTR result_ad = ArrayOwn<OLreal>::New(*delta_y);
+    // *result_ad *= static_cast<ArrayRef<OLreal>&>(*sigmoid_gradient);
+    // EXPORT_ARRAY_PTR(result_ad);
+}
+
+OLreal Sigmoid(const OLreal RI, const OLreal k, const OLreal Th)
+{
+    const OLreal a = 1;
+    return a / (a + exp(-1 * k * (RI - Th)));
+}
+void Sigmoid(ArrayOwn<OLreal>::PTR RI, const OLreal k, const OLreal Th)
+{
+    std::for_each(RI->Data(), RI->Data() + RI->LogicSize(), [k, Th](OLreal& ri){ri = Sigmoid(ri, k, Th);});
+}
+void SigmoidGradient(ArrayOwn<OLreal>::PTR RI, const OLreal k, const OLreal Th)
+{
+    // a/(a + e^-u), a = 1, u = k*(RI - Th)
+    std::for_each(
+        RI->Data(), RI->Data() + RI->LogicSize(), 
+        [k, Th](OLreal& ri){
+            const OLreal fu = Sigmoid(ri, k, Th);
+            const OLreal derivative_u = fu * (1  - fu); 
+            ri = derivative_u * ri  - derivative_u * k;
+        }
+    );
+}
+ ArrayOwn<OLreal>::PTR SigmoidAD(const ArrayOwn<OLreal>* dRI, const ArrayOwn<OLreal>* RI, const OLreal k, const OLreal Th)
+{
+    auto delta_k_th = ArrayOwn<OLreal>::New(*RI);
+    SigmoidGradient(delta_k_th, k, Th);
+    ArrayOwn<OLreal>::PTR result = ArrayOwn<OLreal>::New(*dRI);
+    *result *= static_cast<ArrayRef<OLreal>&>(*delta_k_th);
+    return result;
+}
