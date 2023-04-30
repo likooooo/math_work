@@ -4,7 +4,7 @@
  * @Autor: like
  * @Date: 2023-04-22 10:43:47
  * @LastEditors: like
- * @LastEditTime: 2023-04-29 12:14:15
+ * @LastEditTime: 2023-04-30 23:06:17
  */
 #include <numeric>
 #include <cmath>
@@ -86,7 +86,7 @@ namespace linear_alg::vector
         T normalized_u(u);
         normalize(normalized_u);
         const auto t = inner_product(x, normalized_u);
-        return x0 + u * t;
+        return x0 + normalized_u * t;
     }
         template<class T>
     constexpr inline T projection(const T& x, const T& u /* x0 + t*u describe a subspace cross x0 with direction is t*/)
@@ -96,7 +96,7 @@ namespace linear_alg::vector
         T normalized_u(u);
         normalize(normalized_u);
         const auto t = inner_product(x, normalized_u);
-        return u * t;
+        return normalized_u * t;
     }
     template<class T>
     constexpr inline T projection_eigen_only(const T& x, const T& x0, const T& u)
@@ -144,5 +144,10 @@ namespace linear_alg::vector
             }
         );
         return qn;
+    }
+    template<class T>
+    constexpr inline bool is_in_hyperplanes(const T& a, const T& x0, const T& x)
+    {
+        return 0 == projection()
     }
 }

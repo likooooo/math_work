@@ -4,7 +4,7 @@
  * @Autor: like
  * @Date: 2023-04-22 10:59:25
  * @LastEditors: like
- * @LastEditTime: 2023-04-30 22:31:07
+ * @LastEditTime: 2023-04-30 23:05:23
  */
 #include <iostream>
 #include <Eigen/Dense>
@@ -37,12 +37,12 @@ void norm_test()
 }
 void projection_test()
 {
-    Vector2d x = {1.6, 2.28}, x0 = {0, 0}, u = {0.8944, 0.4472};
+    Vector2d x = {1.6, 2.28}, x0 = {0, 0}, u = {0.8944*2, 0.4472*2};
     PRINT_VAL(projection(x, x0, u));
     PRINT_VAL(projection_eigen_only(x, x0, u));
     {
         /* test for stl container */
-        std::vector<double> x = {1.6, 2.28}, x0 = {0, 0}, u = {0.8944, 0.4472};
+        std::vector<double> x = {1.6, 2.28}, x0 = {0, 0}, u = {0.8944*2, 0.4472*2};
         PRINT_VAL(projection(x, x0, u));
     }
 }
