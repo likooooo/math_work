@@ -4,7 +4,7 @@
  * @Autor: like
  * @Date: 2023-04-28 23:43:01
  * @LastEditors: like
- * @LastEditTime: 2023-04-29 07:27:42
+ * @LastEditTime: 2023-04-29 12:15:39
  */
 #pragma once
 #include <Eigen/Dense>
@@ -47,7 +47,7 @@ namespace std
     }
 
     template <typename T>
-    std::ostream& operator<< (std::ostream& out, const std::vector<T>& v) 
+    std::ostream& operator << (std::ostream& out, const std::vector<T>& v) 
     {
         std::copy(v.begin(), v.end(), std::ostream_iterator<T>(out, "\n"));
         return out;
@@ -55,20 +55,46 @@ namespace std
 }
 namespace std_extention_for_math_work
 {    
+    namespace details
+    {
+        template<class T, class BinaryOp>
+        inline constexpr std::vector<T>& vec_binary_wrapper(std::vector<T>& lhs, const std::vector<T>& rhs)
+        {
+            assert(std::size(lhs) == std::size(rhs));
+            std::transform(std::begin(rhs), std::end(rhs), std::begin(lhs), std::begin(lhs), typename BinaryOp());
+            return lhs;
+        }
+
+    }
     template<class T>
     inline constexpr std::vector<T> operator+(const std::vector<T>& lhs, const std::vector<T>& rhs)
     {
-        assert(std::size(lhs) == std::size(rhs));
-        std::vector<T> result = lhs;
-        std::transform(std::begin(rhs), std::end(rhs), std::begin(result), std::begin(result), std::plus<typename T>());
+        std::vector<T> result(lhs);
+        details::vec_binary_wrapper<typename T, std::plus<typename T>>(result, rhs);
         return result;
     }
     template<class T>
-    inline constexpr std::vector<T> operator*(const std::vector<T>& lhs, T n)
+    inline constexpr std::vector<T>& operator+=(std::vector<T>& lhs, const std::vector<T>& rhs)
+    {
+        return details::vec_binary_wrapper<typename T, std::plus<typename T>>(lhs, rhs);
+    }
+    template<class T>
+    inline constexpr std::vector<T> operator-(const std::vector<T>& lhs, const std::vector<T>& rhs)
     {
         std::vector<T> result(lhs);
-        std::for_each(std::begin(result), std::end(result), [n](T& d){ d = std::multiplies<typename T>()(d, n);});
+        details::vec_binary_wrapper<typename T, std::minus<typename T>>(result, rhs);
         return result;
+    }
+    template<class T>
+    inline constexpr std::vector<T>& operator-=(std::vector<T>& lhs, const std::vector<T>& rhs)
+    {
+        return details::vec_binary_wrapper<typename T, std::minus<typename T>>(lhs, rhs);
+    }
+    template<class T>
+    inline constexpr std::vector<T> operator*(std::vector<T> lhs, T n)
+    {
+        std::for_each(std::begin(lhs), std::end(lhs), [n](T& d){ d = std::multiplies<typename T>()(d, n);});
+        return lhs;
     }
     template<class T>
     inline constexpr void normalize(std::vector<T>& m)
@@ -80,5 +106,21 @@ namespace std_extention_for_math_work
     inline void normalize(Eigen::Matrix<Scala, Rows, Cols>& m)
     {
         m.normalize();
+    }
+    
+    template<class Scala, int Rows, int Cols>
+    inline bool is_zeros(const Eigen::Matrix<Scala, Rows, Cols>& m)
+    {
+        return m.isZero();
+    }
+    template<class T>
+    inline constexpr bool is_zeros(const std::vector<T>& m)
+    {
+        const typename T target{};
+        return std::end(m) == std::find_if(
+            std::begin(m), std::end(m), [target](const auto& n){
+                return std::not_equal_to<typename T>()(n, target);
+            }
+        );
     }
 }

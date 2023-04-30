@@ -4,7 +4,7 @@
  * @Autor: like
  * @Date: 2023-04-22 10:43:47
  * @LastEditors: like
- * @LastEditTime: 2023-04-29 07:28:38
+ * @LastEditTime: 2023-04-29 12:14:15
  */
 #include <numeric>
 #include <cmath>
@@ -88,11 +88,61 @@ namespace linear_alg::vector
         const auto t = inner_product(x, normalized_u);
         return x0 + u * t;
     }
+        template<class T>
+    constexpr inline T projection(const T& x, const T& u /* x0 + t*u describe a subspace cross x0 with direction is t*/)
+    {
+        using namespace std_extention_for_math_work;
+        
+        T normalized_u(u);
+        normalize(normalized_u);
+        const auto t = inner_product(x, normalized_u);
+        return u * t;
+    }
     template<class T>
     constexpr inline T projection_eigen_only(const T& x, const T& x0, const T& u)
     {
         auto u1 = u.transpose();
         return x0 + (u1 * ( x - x0) * u) / (u1 *u);
     }
-    //Íâ»ý https://zhuanlan.zhihu.com/p/35320118
+    template<class T>
+    constexpr inline T projection_eigen_only(const T& x, const T& u)
+    {
+        auto u1 = u.transpose();
+        return (u1 * x * u) / (u1 *u);
+    }
+    template<class T>
+    constexpr inline std::vector<T> gram_schmidt_procedure(std::vector<T> an)
+    {
+        using namespace std_extention_for_math_work;
+
+        assert(std::end(an) == std::find_if(std::begin(an) + 1, std::end(an), [n = std::size(an[0])](const auto& ai){return ai.size() != n;}));
+        const size_t dim = std::size(an[0]);
+        const auto end_of_an = std::remove_if(std::begin(an), std::end(an), [](const auto& a){return is_zeros(a);});   
+        assert(std::distance(std::begin(an), end_of_an) >= dim);
+
+        std::vector<T> qn;
+        qn.reserve(dim);
+        {
+            auto q0 = an[0];
+            normalize(q0);
+            qn.push_back(q0);
+        }
+        std::for_each(std::begin(an) + 1, end_of_an,
+            [&](const auto& ai){
+                typename T sum = projection(ai, qn[0]);
+                typename T q = ai - std::accumulate(
+                    std::begin(qn) + 1, std::end(qn), sum,
+                    [&ai](auto& sum, const auto& qi){
+                        return sum += projection(ai, qi);
+                    }
+                );
+                if(!is_zeros(q))
+                {
+                    normalize(q);
+                    qn.push_back(std::move(q));
+                }
+            }
+        );
+        return qn;
+    }
 }
