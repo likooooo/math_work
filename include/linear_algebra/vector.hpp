@@ -4,13 +4,16 @@
  * @Autor: like
  * @Date: 2023-04-22 10:43:47
  * @LastEditors: like
- * @LastEditTime: 2023-04-30 23:06:17
+ * @LastEditTime: 2023-05-01 13:05:15
  */
 #include <numeric>
 #include <cmath>
 #include <type_traits>
 #include <limits>
 #include <std_extention_for_eigen.hpp>
+
+#define CHECK_SET_HAS_SAME_DIM(vec) \
+    assert(std::end(an) == std::find_if(std::begin(an) + 1, std::end(an), [n = std::size(an[0])](const auto& ai){return ai.size() != n;}));
 
 namespace linear_alg::vector
 {
@@ -115,7 +118,7 @@ namespace linear_alg::vector
     {
         using namespace std_extention_for_math_work;
 
-        assert(std::end(an) == std::find_if(std::begin(an) + 1, std::end(an), [n = std::size(an[0])](const auto& ai){return ai.size() != n;}));
+        CHECK_SET_HAS_SAME_DIM(an);
         const size_t dim = std::size(an[0]);
         const auto end_of_an = std::remove_if(std::begin(an), std::end(an), [](const auto& a){return is_zeros(a);});   
         assert(std::distance(std::begin(an), end_of_an) >= dim);
@@ -148,6 +151,33 @@ namespace linear_alg::vector
     template<class T>
     constexpr inline bool is_in_hyperplanes(const T& a, const T& x0, const T& x)
     {
-        return 0 == projection()
+        const auto proj_len = norm(projection(a, x0 - x));
+        if constexpr(std::is_floating_point_v<typename T::value_type>)
+        {
+            return (std::numeric_limits<T::value_type>::epsilon)() > std::abs(proj_len);
+        }
+        else
+        {
+            return 0 == proj_len;
+        }
+    }
+    template<class T>
+    constexpr inline bool is_in_hyperplanes(const T& a, const double b, const T& x)
+    {
+        const auto proj_len = norm(projection(a, x0 - x));
+        if constexpr(std::is_floating_point_v<typename T::value_type>)
+        {
+            return (std::numeric_limits<T::value_type>::epsilon)() > std::abs(proj_len - b);
+        }
+        else
+        {
+            return b == proj_len;
+        }
+    }
+    template<class T>
+    constexpr inline bool is_in_hyperplanes(const std::vector<T>& span, const double b, const T& x)
+    {
+        CHECK_SET_HAS_SAME_DIM(span);
+        // TODO
     }
 }

@@ -4,7 +4,7 @@
  * @Autor: like
  * @Date: 2023-04-22 10:59:25
  * @LastEditors: like
- * @LastEditTime: 2023-04-30 23:05:23
+ * @LastEditTime: 2023-05-01 13:06:13
  */
 #include <iostream>
 #include <Eigen/Dense>
@@ -16,11 +16,13 @@ using namespace linear_alg::vector;
 void norm_test();
 void projection_test();
 void gram_schmidt_test();
+void hyperplane_test();
 int main()
 {
     norm_test();
     projection_test();
     gram_schmidt_test();
+    hyperplane_test();
 }
 
 void norm_test()
@@ -55,4 +57,8 @@ void gram_schmidt_test()
         auto str_gram_schmidt_procedure_result = gram_schmidt_procedure(stl_set); // TODO : fix bug
         PRINT_VAL(str_gram_schmidt_procedure_result);
     }
+}
+void hyperplane_test()
+{
+    
 }
