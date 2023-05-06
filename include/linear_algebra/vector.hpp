@@ -1,11 +1,12 @@
 /*
- * @Description: 
+ * @Description: https://inst.eecs.berkeley.edu/~ee127/sp21/livebook/l_vecs_main.html
  * @Version: 1.0
  * @Autor: like
  * @Date: 2023-04-22 10:43:47
  * @LastEditors: like
- * @LastEditTime: 2023-05-01 13:05:15
+ * @LastEditTime: 2023-05-01 13:20:06
  */
+#pragma once
 #include <numeric>
 #include <cmath>
 #include <type_traits>
